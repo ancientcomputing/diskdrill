@@ -50,5 +50,5 @@ else
   echo "!! Skipped notarization: Gatekeeper will block this DMG on other Macs."
 fi
 
-shasum -a 256 "$DMG" | tee "$DMG.sha256"
+(cd "$DIST" && shasum -a 256 "${DMG:t}" | tee "${DMG:t}.sha256")
 echo "Done: $PWD/$DMG"
