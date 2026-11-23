@@ -1,5 +1,7 @@
 # DiskDrill
 
+<img src="Icon/AppIcon.png" width="128" alt="DiskDrill icon">
+
 A small native macOS app (SwiftUI) for finding out where your disk space went.
 
 It opens on your home folder, shows its total size on disk, and lists every
@@ -35,6 +37,10 @@ open build/DiskDrill.app
 # start somewhere other than ~/
 open build/DiskDrill.app --args -start /Volumes/External
 ```
+
+The app icon is drawn in code by `Icon/make_icon.swift`; after editing it, run
+`swift Icon/make_icon.swift` to regenerate `Resources/AppIcon.icns` (and the
+`Icon/AppIcon.png` preview), then rebuild.
 
 ## Full Disk Access
 
