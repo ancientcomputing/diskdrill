@@ -2,32 +2,56 @@ import AppKit
 import SwiftUI
 
 @main
-struct DiskDrillApp: App {
+struct FolderDrillApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
-    @State private var model = Browser(start: Self.startFolder)
+    @State private var model = Browser(stack: Self.startStack)
 
-    /// `-start <folder>` launch argument (e.g. `open DiskDrill.app --args -start /Volumes/X`),
-    /// else the home folder. A bare path argument would make AppKit treat the launch as
-    /// "open a document" and SwiftUI would skip creating the window.
-    private static var startFolder: String {
-        guard let arg = UserDefaults.standard.string(forKey: "start") else { return NSHomeDirectory() }
-        let path = ((arg as NSString).expandingTildeInPath as NSString).standardizingPath
-        var isDir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
-            ? path : NSHomeDirectory()
+    /// Where the window opens:
+    /// - demo mode: the shot's folders (Demo.swift)
+    /// - `-start <folder>` (e.g. `open FolderDrill.app --args -start /Volumes/X`). A bare path
+    ///   argument would make AppKit treat the launch as "open a document" and skip the window.
+    /// - the folder chosen last time, else the home folder.
+    /// In the sandbox only granted folders count; with none, the window shows the folder setup screen.
+    private static var startStack: [String] {
+        Grants.restore()
+        if Demo.isActive { return Demo.stack }
+        let candidates = [UserDefaults.standard.string(forKey: "start"),
+                          UserDefaults.standard.string(forKey: "lastRoot"),
+                          Sandbox.home]
+        for case let arg? in candidates {
+            let path = ((arg as NSString).expandingTildeInPath as NSString).standardizingPath
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue,
+               Grants.hasAccess(path) {
+                return [path]
+            }
+        }
+        return []
     }
 
     var body: some Scene {
-        Window("DiskDrill", id: "main") {
+        Window("Folder Drill", id: "main") {
             ContentView(model: model)
                 .frame(minWidth: 760, minHeight: 480)
+                .onAppear { Demo.start(model) }
         }
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Folder Drill") { Links.showAbout() }
+            }
+            CommandGroup(replacing: .help) {
+                Button("Folder Drill Support") { Links.open(Links.support) }
+                Button("Email Support…") { Links.open(Links.email) }
+                Button("Report an Issue on GitHub…") { Links.open(Links.issues) }
+                Divider()
+                Button("Privacy Policy") { Links.open(Links.privacy) }
+                Button("Folder Drill on GitHub") { Links.open(Links.source) }
+            }
             CommandMenu("Go") {
                 Button("Back") { model.back() }
                     .keyboardShortcut("[", modifiers: .command)
                     .disabled(model.stack.count < 2)
-                Button("Home") { model.reset(to: NSHomeDirectory()) }
+                Button("Home") { model.goHome() }
                     .keyboardShortcut("h", modifiers: [.command, .shift])
                 Button("Choose Folder…") { model.chooseFolder() }
                     .keyboardShortcut("o", modifiers: .command)
@@ -38,6 +62,7 @@ struct DiskDrillApp: App {
                 Divider()
                 Button("Rescan") { model.rescan() }
                     .keyboardShortcut("r", modifiers: .command)
+                    .disabled(model.needsFolder)
             }
         }
     }
@@ -55,17 +80,25 @@ struct ContentView: View {
     @Bindable var model: Browser
 
     var body: some View {
+        if model.needsFolder {
+            SetupView(model: model)
+        } else {
+            browser
+        }
+    }
+
+    private var browser: some View {
         let rows = model.rows
         let total = model.currentTotal
         let denominator = max(total?.size ?? model.partialTotal, 1)
 
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             header(total: total)
             Divider()
             if let lvl = model.currentListing, !lvl.ok {
                 ContentUnavailableView("Can't read this folder",
                                        systemImage: "lock.fill",
-                                       description: Text("Permission denied. Grant DiskDrill Full Disk Access and rescan."))
+                                       description: Text("Permission denied. Grant Folder Drill Full Disk Access and rescan."))
             } else if model.currentListing == nil {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -118,6 +151,7 @@ struct ContentView: View {
                         if i > 0 { Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary) }
                         Button(crumbName(p, first: i == 0)) { model.pop(to: i) }
                             .buttonStyle(.plain)
+                            .focusable(false)
                             .fontWeight(i == model.stack.count - 1 ? .semibold : .regular)
                             .foregroundStyle(i == model.stack.count - 1 ? .primary : .secondary)
                     }
@@ -148,7 +182,7 @@ struct ContentView: View {
 
     private func crumbName(_ p: String, first: Bool) -> String {
         if first {
-            return p == NSHomeDirectory() ? "~" : (p as NSString).abbreviatingWithTildeInPath
+            return p == Sandbox.home ? "Home" : p.tildePath
         }
         return (p as NSString).lastPathComponent
     }
@@ -261,7 +295,7 @@ struct ContentView: View {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text("\(total.unreadable) folders unreadable")
                 Button("Grant Full Disk Access…") {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+                    Links.open(Links.fullDiskAccess)
                 }
             }
             Text("Double-click a folder to drill in · ⌘[ to go back")
@@ -275,5 +309,47 @@ struct ContentView: View {
     private func reveal(_ path: String) { revealMany([path]) }
     private func revealMany(_ paths: [String]) {
         NSWorkspace.shared.activateFileViewerSelecting(paths.map { URL(fileURLWithPath: $0) })
+    }
+}
+
+/// First run of the sandboxed (Mac App Store) build: Folder Drill can only measure folders the user
+/// chooses, so it asks for one.
+struct SetupView: View {
+    let model: Browser
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable().frame(width: 96, height: 96)
+            Text("Where did your storage go?")
+                .font(.title).bold()
+            Text("Choose a folder and Folder Drill measures everything in it, hidden folders included, biggest first. Double-click a folder to drill into it.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: 440)
+            VStack(spacing: 10) {
+                Button { model.chooseFolder(startingAt: Sandbox.home) } label: {
+                    Text("Choose Your Home Folder…").frame(minWidth: 220)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+                Button("Choose Another Folder or Drive…") { model.chooseFolder(startingAt: "/Volumes") }
+                    .buttonStyle(.link)
+            }
+            Text("Folder Drill only reads the folder you choose, and remembers it for next time. It changes nothing unless you move an item to the Trash. Pick a different folder at any time with ⌘O.")
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: 440)
+            HStack(spacing: 14) {
+                Link("Privacy Policy", destination: Links.privacy)
+                Link("Support", destination: Links.support)
+            }
+            .font(.footnote)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle("Folder Drill")
     }
 }

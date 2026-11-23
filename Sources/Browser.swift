@@ -29,15 +29,18 @@ final class Browser {
     private var roots: [String: DirInfo] = [:]          // completed scan results, keyed by absolute path
     private var inFlight: [String: (id: UUID, token: CancelToken)] = [:]
     private var poller: Timer?
-    private static let listingQueue = DispatchQueue(label: "diskdrill.listing", qos: .userInteractive)
+    private static let listingQueue = DispatchQueue(label: "folderdrill.listing", qos: .userInteractive)
 
-    var current: String { stack.last! }
+    /// The folder shown. Empty before the sandboxed app has been given a folder (`needsFolder`).
+    var current: String { stack.last ?? "" }
+    var needsFolder: Bool { stack.isEmpty }
     var isScanning: Bool { !inFlight.isEmpty }
     var currentListing: Level? { listings[current] }
 
-    init(start: String = NSHomeDirectory()) {
-        stack = [start]
-        open(start)
+    /// `stack`: the root folder, then the folders drilled into. Empty shows the folder setup screen.
+    init(stack: [String]) {
+        self.stack = stack
+        for p in stack { open(p) }
     }
 
     // MARK: - Navigation
@@ -66,12 +69,14 @@ final class Browser {
     }
 
     func reset(to path: String) {
+        UserDefaults.standard.set(path, forKey: "lastRoot")
         stack = [path]
         selection = []
         rescan()
     }
 
     func rescan() {
+        guard !needsFolder else { return }
         cancelAll()
         Scanner.resetClaims()
         listings = [:]
@@ -81,14 +86,18 @@ final class Browser {
         open(current)
     }
 
-    func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.showsHiddenFiles = true
-        panel.directoryURL = URL(fileURLWithPath: current)
-        if panel.runModal() == .OK, let url = panel.url {
-            reset(to: url.path)
+    func chooseFolder(startingAt start: String? = nil) {
+        if let path = Grants.pickFolder(startingAt: start ?? (needsFolder ? Sandbox.home : current)) {
+            reset(to: path)
+        }
+    }
+
+    /// The home folder; in the sandbox, asks for it first if it hasn't been granted.
+    func goHome() {
+        if Grants.hasAccess(Sandbox.home) {
+            reset(to: Sandbox.home)
+        } else {
+            chooseFolder(startingAt: Sandbox.home)
         }
     }
 

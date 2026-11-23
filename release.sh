@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds a universal, Developer ID–signed, notarized DiskDrill DMG in ./dist.
+# Builds a universal, Developer ID–signed, notarized Folder Drill DMG in ./dist.
 #
 #   NOTARY_PROFILE=<profile> ./release.sh 1.0.0
 #
@@ -12,13 +12,13 @@ cd "$(dirname "$0")"
 VERSION="${1:?usage: ./release.sh <version>   e.g. ./release.sh 1.0.0}"
 # Developer ID Application: ThisBrainAI LLC (MP7PDLDJ96), by fingerprint since the
 # keychain may hold several copies of the same certificate.
-IDENTITY="${IDENTITY:-7D406E47861FFC1D03968EC39F6D703B518ABE02}"
+IDENTITY="${SIGN_IDENTITY:-${IDENTITY:-7D406E47861FFC1D03968EC39F6D703B518ABE02}}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 SKIP_NOTARIZE="${SKIP_NOTARIZE:-0}"
 
-APP=build/DiskDrill.app
+APP=build/FolderDrill.app
 DIST=dist
-DMG="$DIST/DiskDrill-$VERSION.dmg"
+DMG="$DIST/FolderDrill-$VERSION.dmg"
 
 if [[ "$SKIP_NOTARIZE" != "1" ]]; then
   [[ -n "$NOTARY_PROFILE" ]] || { echo "Set NOTARY_PROFILE (or SKIP_NOTARIZE=1)." >&2; exit 1; }
@@ -26,19 +26,16 @@ if [[ "$SKIP_NOTARIZE" != "1" ]]; then
     || { echo "notarytool profile '$NOTARY_PROFILE' is not usable." >&2; exit 1; }
 fi
 
-echo "==> Building universal app $VERSION"
-VERSION="$VERSION" UNIVERSAL=1 ./build.sh
-
-echo "==> Signing app (hardened runtime)"
-codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
+echo "==> Building universal app $VERSION (Developer ID, hardened runtime)"
+VERSION="$VERSION" UNIVERSAL=1 SIGN_IDENTITY="$IDENTITY" SANDBOX=0 ./build.sh
 codesign --verify --strict --verbose=2 "$APP"
 
 echo "==> Creating DMG"
 rm -rf "$DIST/stage" "$DMG"
 mkdir -p "$DIST/stage"
-ditto "$APP" "$DIST/stage/DiskDrill.app"
+ditto "$APP" "$DIST/stage/FolderDrill.app"
 ln -s /Applications "$DIST/stage/Applications"
-hdiutil create -volname "DiskDrill $VERSION" -srcfolder "$DIST/stage" \
+hdiutil create -volname "Folder Drill $VERSION" -srcfolder "$DIST/stage" \
   -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$DMG" >/dev/null
 rm -rf "$DIST/stage"
 codesign --force --timestamp --sign "$IDENTITY" "$DMG"

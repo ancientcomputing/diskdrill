@@ -1,4 +1,4 @@
-// Renders the DiskDrill app icon to Resources/AppIcon.icns.
+// Renders the Folder Drill app icon to Resources/AppIcon.icns.
 // Usage (from the repo root):  swift Icon/make_icon.swift
 //
 // Design: a navy macOS-style rounded square holding a two-level "sunburst"
