@@ -26,6 +26,13 @@ Sizes are allocated bytes on disk (what `du` reports): hard links are counted
 once, symlinks aren't followed, and other volumes mounted inside a folder are
 skipped.
 
+## Install
+
+Download the latest `DiskDrill-x.y.z.dmg` from
+[Releases](https://github.com/ancientcomputing/diskdrill/releases), open it, and
+drag DiskDrill to Applications. It's a universal app (Apple silicon and Intel),
+signed with a Developer ID and notarized by Apple.
+
 ## Build
 
 Requires macOS 14+ and Xcode command-line tools.
@@ -36,6 +43,13 @@ open build/DiskDrill.app
 
 # start somewhere other than ~/
 open build/DiskDrill.app --args -start /Volumes/External
+```
+
+To make a signed, notarized release DMG in `dist/` (needs the ThisBrainAI LLC
+Developer ID certificate and a notarytool keychain profile):
+
+```bash
+NOTARY_PROFILE=<profile> ./release.sh 1.0.0
 ```
 
 The app icon is drawn in code by `Icon/make_icon.swift`; after editing it, run
