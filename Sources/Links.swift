@@ -5,8 +5,8 @@ import AppKit
 enum Links {
     static let privacy = URL(string: "https://thisbrain.ai/opensource/privacy.html#folderdrill")!
     static let support = URL(string: "https://thisbrain.ai/opensource/support.html#folderdrill")!
-    static let source = URL(string: "https://github.com/ancientcomputing/diskdrill")!
-    static let issues = URL(string: "https://github.com/ancientcomputing/diskdrill/issues")!
+    static let source = URL(string: "https://github.com/ancientcomputing/folderdrill")!
+    static let issues = URL(string: "https://github.com/ancientcomputing/folderdrill/issues")!
     static let license = URL(string: "https://www.apache.org/licenses/LICENSE-2.0")!
     static let company = URL(string: "https://thisbrain.ai")!
     static let email = URL(string: "mailto:neuron@thisbrain.ai?subject=Folder%20Drill")!

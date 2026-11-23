@@ -30,7 +30,7 @@ skipped.
 ## Install
 
 Mac App Store: coming soon. Or download the latest `FolderDrill-x.y.z.dmg` from
-[Releases](https://github.com/ancientcomputing/diskdrill/releases), open it, and
+[Releases](https://github.com/ancientcomputing/folderdrill/releases), open it, and
 drag Folder Drill to Applications. It's a universal app (Apple silicon and Intel),
 signed with a Developer ID and notarized by Apple.
 
