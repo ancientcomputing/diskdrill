@@ -15,8 +15,10 @@ folder to drill into it; go back with ⌘[ or the breadcrumb.
 - Size, share-of-folder bar and file count for every row; sortable columns.
 - Hidden items (dot-files and items with the macOS hidden flag, like
   `~/Library`) shown in grey.
-- Right-click to Reveal in Finder or Copy Path. ⌘O picks a different start
-  folder, ⌘R rescans.
+- Right-click to Reveal in Finder, Copy Path, or Move to Trash (also ⌘⌫ on
+  the selection). Trashing asks for confirmation, shows how much space it
+  frees, and updates the totals of every parent folder without a rescan.
+- ⌘O picks a different start folder, ⌘R rescans.
 
 Sizes are allocated bytes on disk (what `du` reports): hard links are counted
 once, symlinks aren't followed, and other volumes mounted inside a folder are
@@ -29,6 +31,9 @@ Requires macOS 14+ and Xcode command-line tools.
 ```bash
 ./build.sh
 open build/DiskDrill.app
+
+# start somewhere other than ~/
+open build/DiskDrill.app --args -start /Volumes/External
 ```
 
 ## Full Disk Access

@@ -94,6 +94,114 @@ final class Browser {
 
     func path(of name: String) -> String { joinPath(current, name) }
 
+    // MARK: - Move to Trash
+
+    /// Items awaiting confirmation (names in the current folder). Non-empty shows the dialog.
+    var trashCandidates: [String] = []
+    /// Messages for items that could not be trashed. Non-empty shows an alert.
+    var trashErrors: [String] = []
+
+    func requestTrash(_ names: Set<String>) {
+        let trashable = Set(rows.filter { $0.kind != .mount }.map(\.name))
+        trashCandidates = names.filter { trashable.contains($0) }.sorted()
+    }
+
+    /// Known size of the pending items, and whether any are still being measured.
+    var trashCandidatesSize: (bytes: Int64, partial: Bool) {
+        let wanted = Set(trashCandidates)
+        let picked = rows.filter { wanted.contains($0.name) }
+        return (picked.reduce(0) { $0 + ($1.size ?? 0) }, picked.contains { $0.size == nil })
+    }
+
+    func confirmTrash() {
+        let names = trashCandidates
+        trashCandidates = []
+        let base = current
+        guard var lvl = listings[base] else { return }
+
+        var removed: [LevelEntry] = []
+        var errors: [String] = []
+        for n in names {
+            do {
+                try FileManager.default.trashItem(at: URL(fileURLWithPath: joinPath(base, n)), resultingItemURL: nil)
+                if let e = lvl.entries.first(where: { $0.name == n }) { removed.append(e) }
+            } catch {
+                errors.append("\(n): \(error.localizedDescription)")
+            }
+        }
+        trashErrors = errors
+        guard !removed.isEmpty else { return }
+
+        // Forget everything at or under the trashed folders.
+        for e in removed where e.kind == .dir {
+            let p = joinPath(base, e.name)
+            let pre = p + "/"
+            let under = { (k: String) in k == p || k.hasPrefix(pre) }
+            for (k, job) in inFlight where under(k) {
+                job.token.cancel()
+                Scanner.markCancelled(job.id)
+                inFlight[k] = nil
+            }
+            roots = roots.filter { !under($0.key) }
+            listings = listings.filter { !under($0.key) }
+        }
+
+        // Update this folder's listing.
+        let gone = Set(removed.map(\.name))
+        let removedFiles = removed.filter { $0.kind == .file || $0.kind == .symlink }
+        let removedFileBytes = removedFiles.reduce(Int64(0)) { $0 + $1.size }
+        lvl.entries.removeAll { gone.contains($0.name) }
+        lvl.subdirs.removeAll { gone.contains($0) }
+        lvl.fileBytes = max(0, lvl.fileBytes - removedFileBytes)
+        lvl.fileCount -= removedFiles.count
+        listings[base] = lvl
+
+        // Subtract from this folder's cached totals and every cached ancestor.
+        patch(base) { node in
+            let dropped = node.children.filter { gone.contains($0.name) }
+            return DirInfo(
+                name: node.name,
+                size: max(0, node.size - removedFileBytes - dropped.reduce(0) { $0 + $1.size }),
+                fileCount: max(0, node.fileCount - removedFiles.count - dropped.reduce(0) { $0 + $1.fileCount }),
+                unreadable: node.unreadable - dropped.reduce(0) { $0 + $1.unreadable },
+                children: node.children.filter { !gone.contains($0.name) })
+        }
+
+        selection.subtract(gone)
+        trySynthesizeUpward(from: base)
+        updatePolling()
+    }
+
+    /// Applies `f` to the cached DirInfo for `path` in every cached tree that contains it,
+    /// rebuilding the ancestors on the way with corrected totals.
+    private func patch(_ path: String, _ f: (DirInfo) -> DirInfo) {
+        for key in Array(roots.keys) {
+            guard let root = roots[key] else { continue }
+            if key == path {
+                roots[key] = f(root)
+            } else {
+                let prefix = key == "/" ? "/" : key + "/"
+                guard path.hasPrefix(prefix) else { continue }
+                let rel = path.dropFirst(prefix.count).split(separator: "/").map(String.init)
+                roots[key] = rebuild(root, rel[...], f)
+            }
+        }
+    }
+
+    private func rebuild(_ node: DirInfo, _ comps: ArraySlice<String>, _ f: (DirInfo) -> DirInfo) -> DirInfo {
+        guard let first = comps.first else { return f(node) }
+        guard let i = node.children.firstIndex(where: { $0.name == first }) else { return node }
+        let old = node.children[i]
+        let new = rebuild(old, comps.dropFirst(), f)
+        var kids = node.children
+        kids[i] = new
+        return DirInfo(name: node.name,
+                       size: node.size - old.size + new.size,
+                       fileCount: node.fileCount - old.fileCount + new.fileCount,
+                       unreadable: node.unreadable - old.unreadable + new.unreadable,
+                       children: kids)
+    }
+
     // MARK: - Data for the UI
 
     var rows: [Row] {

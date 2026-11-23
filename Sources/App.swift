@@ -4,7 +4,18 @@ import SwiftUI
 @main
 struct DiskDrillApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
-    @State private var model = Browser()
+    @State private var model = Browser(start: Self.startFolder)
+
+    /// `-start <folder>` launch argument (e.g. `open DiskDrill.app --args -start /Volumes/X`),
+    /// else the home folder. A bare path argument would make AppKit treat the launch as
+    /// "open a document" and SwiftUI would skip creating the window.
+    private static var startFolder: String {
+        guard let arg = UserDefaults.standard.string(forKey: "start") else { return NSHomeDirectory() }
+        let path = ((arg as NSString).expandingTildeInPath as NSString).standardizingPath
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
+            ? path : NSHomeDirectory()
+    }
 
     var body: some Scene {
         Window("DiskDrill", id: "main") {
@@ -20,6 +31,10 @@ struct DiskDrillApp: App {
                     .keyboardShortcut("h", modifiers: [.command, .shift])
                 Button("Choose Folder…") { model.chooseFolder() }
                     .keyboardShortcut("o", modifiers: .command)
+                Divider()
+                Button("Move to Trash") { model.requestTrash(model.selection) }
+                    .keyboardShortcut(.delete, modifiers: .command)
+                    .disabled(model.selection.isEmpty)
                 Divider()
                 Button("Rescan") { model.rescan() }
                     .keyboardShortcut("r", modifiers: .command)
@@ -60,6 +75,22 @@ struct ContentView: View {
             footer(total: total)
         }
         .navigationTitle((model.current as NSString).lastPathComponent)
+        .confirmationDialog(trashTitle,
+                            isPresented: Binding(get: { !model.trashCandidates.isEmpty },
+                                                 set: { if !$0 { model.trashCandidates = [] } })) {
+            Button("Move to Trash", role: .destructive) { model.confirmTrash() }
+            Button("Cancel", role: .cancel) { model.trashCandidates = [] }
+        } message: {
+            let (bytes, partial) = model.trashCandidatesSize
+            Text("This frees \(partial ? "at least " : "")\(fmt(bytes)). You can get items back from the Trash until it's emptied.")
+        }
+        .alert("Some items couldn't be moved to the Trash",
+               isPresented: Binding(get: { !model.trashErrors.isEmpty },
+                                    set: { if !$0 { model.trashErrors = [] } })) {
+            Button("OK") { model.trashErrors = [] }
+        } message: {
+            Text(model.trashErrors.joined(separator: "\n"))
+        }
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button { model.back() } label: { Image(systemName: "chevron.left") }
@@ -108,6 +139,11 @@ struct ContentView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    private var trashTitle: String {
+        let c = model.trashCandidates
+        return c.count == 1 ? "Move “\(c[0])” to the Trash?" : "Move \(c.count) items to the Trash?"
     }
 
     private func crumbName(_ p: String, first: Bool) -> String {
@@ -188,6 +224,10 @@ struct ContentView: View {
                 }
             } else if !names.isEmpty {
                 Button("Reveal in Finder") { revealMany(names.map(model.path(of:))) }
+            }
+            if names.contains(where: { n in rows.first { $0.name == n }?.kind != .mount }) {
+                Divider()
+                Button("Move to Trash", role: .destructive) { model.requestTrash(names) }
             }
         } primaryAction: { names in
             if names.count == 1, let n = names.first { model.drill(into: n) }
