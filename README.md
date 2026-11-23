@@ -1,0 +1,38 @@
+# DiskDrill
+
+A small native macOS app (SwiftUI) for finding out where your disk space went.
+
+It opens on your home folder, shows its total size on disk, and lists every
+folder and file in it — hidden ones included — sorted by size. Double-click a
+folder to drill into it; go back with ⌘[ or the breadcrumb.
+
+## Features
+
+- Scans the whole tree once in the background; sizes stream in as they're
+  measured, and drilling into an already-measured folder is instant.
+- Drilling into a folder that's still being measured splits its scan per
+  subfolder so results appear sooner.
+- Size, share-of-folder bar and file count for every row; sortable columns.
+- Hidden items (dot-files and items with the macOS hidden flag, like
+  `~/Library`) shown in grey.
+- Right-click to Reveal in Finder or Copy Path. ⌘O picks a different start
+  folder, ⌘R rescans.
+
+Sizes are allocated bytes on disk (what `du` reports): hard links are counted
+once, symlinks aren't followed, and other volumes mounted inside a folder are
+skipped.
+
+## Build
+
+Requires macOS 14+ and Xcode command-line tools.
+
+```bash
+./build.sh
+open build/DiskDrill.app
+```
+
+## Full Disk Access
+
+macOS blocks some folders (parts of `~/Library`, Mail, Safari, etc.), so their
+sizes come out low and get a warning icon. Use the "Grant Full Disk Access…"
+button in the footer, add DiskDrill, then press ⌘R.
