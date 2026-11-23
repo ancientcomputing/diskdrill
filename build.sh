@@ -37,7 +37,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key><string>DiskDrill</string>
   <key>CFBundleDisplayName</key><string>DiskDrill</string>
-  <key>CFBundleIdentifier</key><string>com.thisbrainai.diskdrill</string>
+  <key>CFBundleIdentifier</key><string>ai.thisbrain.diskdrill</string>
   <key>CFBundleExecutable</key><string>DiskDrill</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
